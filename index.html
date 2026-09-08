@@ -223,7 +223,7 @@ function receiptMarkup(d){
  <div class="receipt-text">Recebemos de <b>${escapeHtml(d.name)}</b> a importância de <b>${money(d.value)}</b>, referente a <b>${escapeHtml(d.description)}</b>.</div>
  <div class="receipt-row"><span>Forma de pagamento</span><b>${escapeHtml(d.method)}</b></div>
  ${d.obs?`<div class="receipt-row"><span>Observações</span><b>${escapeHtml(d.obs)}</b></div>`:''}
- <div class="signature"><span>${escapeHtml(currentProfile?.nome||'Responsável pelo recebimento')}</span><br><small>Responsável pelo recebimento</small></div>`;
+ <div class="signature"><span>PROVOPAR</span><br><small>Responsável pelo recebimento</small></div>`;
 }
 function updateReceiptPreview(){document.getElementById('receiptPreview').innerHTML=receiptMarkup(receiptData())}
 function printReceipt(){
