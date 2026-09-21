@@ -89,6 +89,7 @@ main{padding:28px 32px}.topbar{display:flex;justify-content:space-between;align-
 
 <section id="relatorios" class="tabs-page">
   <div class="panel"><h3>Relatórios e Backup</h3><p class="muted">Os dados principais ficam sincronizados no Supabase. O backup JSON serve como cópia de segurança adicional.</p>
+    <div class="report-card"><div><b>Prestação de Contas Completa</b><div class="muted">Consolida Patrocínios, Camarotes, Praça de Alimentação e Estandes, com valores previstos, recebidos, saldos e pendências.</div></div><button class="btn primary" onclick="printPrestacaoContas()">Gerar / Imprimir PDF</button></div>
     <div class="report-card"><div><b>Relatório geral</b><div class="muted">Dashboard e situação financeira atual.</div></div><button class="btn" onclick="window.print()">Imprimir / PDF</button></div>
     <div class="report-card"><div><b>Exportar patrocinadores</b><div class="muted">Arquivo CSV para abrir em qualquer planilha.</div></div><button class="btn" onclick="exportCSV('patrocinadores')">Exportar CSV</button></div>
     <div class="report-card"><div><b>Exportar camarotes</b><div class="muted">Número, responsável, valor e situação.</div></div><button class="btn" onclick="exportCSV('camarotes')">Exportar CSV</button></div>
@@ -264,6 +265,40 @@ function printReceipt(){
  let w=window.open('','_blank','width=850,height=700');
  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Recibo ${escapeHtml(d.number)}</title><style>body{font-family:Arial,sans-serif;color:#172018;margin:0;padding:36px;background:#fff}.box{max-width:760px;margin:auto;border:1px solid #cfd7d0;border-radius:14px;padding:34px}h2{text-align:center;margin:0 0 5px}.receipt-sub{text-align:center;color:#68746a;margin-bottom:24px}.receipt-row{display:flex;justify-content:space-between;gap:18px;border-bottom:1px dashed #d8ded9;padding:9px 0}.receipt-text{font-size:17px;line-height:1.8;margin:28px 0}.signature{margin-top:70px;text-align:center}.signature span{display:inline-block;min-width:300px;border-top:1px solid #333;padding-top:8px}small{color:#68746a}@media print{body{padding:0}.box{border:0}}</style></head><body><div class="box">${receiptMarkup(d)}</div><script>window.onload=()=>window.print();<\/script></body></html>`);
  w.document.close();
+}
+
+function reportStatusCounts(arr){let out={Pago:0,Parcial:0,Pendente:0,Revisar:0,'Disponível':0};arr.forEach(x=>{let st=x.status||'Revisar';out[st]=(out[st]||0)+1});return out}
+function reportTable(title,headers,rows){return `<section class="rsec"><h2>${escapeHtml(title)}</h2><table><thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${r.map(v=>`<td>${v}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${headers.length}" class="center">Nenhum registro.</td></tr>`}</tbody></table></section>`}
+function printPrestacaoContas(){
+ const c=calc(), saldo=Math.max(0,c.total-c.paid), pct=c.total?(c.paid/c.total*100):0;
+ const pat=[...db.patrocinadores].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+ const cab=[...db.camarotes].filter(x=>x.nome).sort((a,b)=>a.numero-b.numero);
+ const pr=[...db.praca].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+ const est=[...db.estandes].filter(x=>x.nome).sort((a,b)=>a.numero-b.numero);
+ const pend=[
+  ...pat.map(x=>({tipo:'Patrocínio',nome:x.nome,ref:x.categoria,valor:x.valor,pago:x.pago,status:x.status})),
+  ...cab.map(x=>({tipo:'Camarote',nome:x.nome,ref:'#'+x.numero,valor:x.valor,pago:x.pago,status:x.status})),
+  ...pr.map(x=>({tipo:'Praça de Alimentação',nome:x.nome,ref:'Venda completa',valor:x.valor,pago:x.pago,status:x.status})),
+  ...est.map(x=>({tipo:'Estande',nome:x.nome,ref:'#'+x.numero,valor:x.valor,pago:x.pago,status:x.status}))
+ ].filter(x=>Math.max(0,Number(x.valor||0)-Number(x.pago||0))>0 || ['Pendente','Parcial','Revisar'].includes(x.status));
+ const summary=[
+  ['Patrocínios',c.patPrev,c.patPaid,Math.max(0,c.patPrev-c.patPaid)],['Camarotes',c.cabPrev,c.cabPaid,Math.max(0,c.cabPrev-c.cabPaid)],['Praça de Alimentação',c.prPrev,c.prPaid,Math.max(0,c.prPrev-c.prPaid)],['Estandes',c.estPrev,c.estPaid,Math.max(0,c.estPrev-c.estPaid)]
+ ];
+ const esc=x=>escapeHtml(x??'');
+ const m=x=>money(Number(x||0));
+ const today=new Date().toLocaleDateString('pt-BR');
+ let body=`<div class="head"><h1>PRESTAÇÃO DE CONTAS</h1><div>2ª AgroFest 2026</div><small>Relatório emitido em ${today}</small></div>
+ <div class="cards"><div><span>Total previsto</span><b>${m(c.total)}</b></div><div><span>Total recebido</span><b>${m(c.paid)}</b></div><div><span>Saldo a receber</span><b>${m(saldo)}</b></div><div><span>Arrecadação</span><b>${pct.toFixed(1).replace('.',',')}%</b></div></div>
+ ${reportTable('Resumo Financeiro',['Categoria','Previsto','Recebido','Saldo'],summary.map(r=>[esc(r[0]),m(r[1]),m(r[2]),m(r[3])]))}
+ ${reportTable('Patrocínios',['Empresa / Patrocinador','Categoria','Previsto','Recebido','Saldo','Status','Responsável'],pat.map(x=>[esc(x.nome),esc(x.categoria),m(x.valor),m(x.pago),m(Math.max(0,x.valor-x.pago)),esc(x.status),esc(x.responsavel||'—')]))}
+ ${reportTable('Camarotes',['Nº','Setor','Responsável / Empresa','Previsto','Recebido','Saldo','Status'],cab.map(x=>[esc(x.numero),esc(x.setor||'—'),esc(x.nome),m(x.valor),m(x.pago),m(Math.max(0,x.valor-x.pago)),esc(x.status)]))}
+ ${reportTable('Praça de Alimentação',['Comprador / Empresa','Previsto','Recebido','Saldo','Status','Responsável'],pr.map(x=>[esc(x.nome),m(x.valor),m(x.pago),m(Math.max(0,x.valor-x.pago)),esc(x.status),esc(x.responsavel||'—')]))}
+ ${reportTable('Estandes',['Nº','Empresa / Responsável','Previsto','Recebido','Saldo','Status','Responsável'],est.map(x=>[esc(x.numero),esc(x.nome),m(x.valor),m(x.pago),m(Math.max(0,x.valor-x.pago)),esc(x.status),esc(x.responsavel||'—')]))}
+ ${reportTable('Pendências Financeiras',['Tipo','Empresa / Responsável','Referência','Previsto','Recebido','Saldo','Status'],pend.map(x=>[esc(x.tipo),esc(x.nome),esc(x.ref),m(x.valor),m(x.pago),m(Math.max(0,x.valor-x.pago)),esc(x.status)]))}
+ <div class="note2"><b>Observação:</b> este relatório consolida os valores cadastrados no sistema no momento da emissão. Formas de pagamento e histórico de parcelas só aparecem quando registrados nos campos de observação/recibo; o sistema atual não mantém um livro separado de transações.</div>
+ <div class="sign"><span>PROVOPAR</span><small>Responsável pelo recebimento</small></div>`;
+ let w=window.open('','_blank','width=1100,height=800');if(!w)return alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site.');
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Prestação de Contas - 2ª AgroFest 2026</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172018;margin:0;font-size:10px}.head{text-align:center;margin-bottom:16px}.head h1{margin:0;font-size:22px}.head div{font-size:15px;font-weight:700;margin-top:4px}.head small{display:block;color:#68746a;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}.cards div{border:1px solid #d8ded9;border-radius:8px;padding:10px}.cards span{display:block;color:#68746a;font-size:9px;text-transform:uppercase}.cards b{display:block;font-size:15px;margin-top:4px}.rsec{margin:0 0 18px;break-inside:auto}.rsec h2{font-size:14px;margin:0 0 7px;padding-bottom:5px;border-bottom:2px solid #1f6b3a}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d8ded9;padding:5px 6px;text-align:left;vertical-align:top}th{background:#eef3ee;font-size:9px}tr{break-inside:avoid}.center{text-align:center;color:#68746a}.note2{border:1px solid #ead7a7;background:#fff9e9;padding:9px;border-radius:7px;margin-top:12px}.sign{text-align:center;margin:40px auto 0;width:300px;border-top:1px solid #333;padding-top:6px}.sign span{display:block;font-weight:bold;font-size:12px}.sign small{color:#68746a}@media print{.rsec{page-break-inside:auto}}</style></head><body>${body}<script>window.onload=()=>setTimeout(()=>window.print(),250);<\/script></body></html>`);w.document.close();
 }
 
 function download(name,text,type){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
